@@ -65,7 +65,7 @@ class AgendaApi(object):
             # TODO - G.M - 2019-03-13 - Better deal with other error code
             return False
 
-    def _create_agenda(self, agenda_url, agenda_name, agenda_description):
+    def _create_agenda(self, auth, agenda_url, agenda_name, agenda_description):
         logger.debug(self, "create a new caldav agenda at url {}".format(agenda_url))
         # INFO - G.M - 2019-05-10 - we use str as pick key as it is determinist: same
         # result between run. default method use hash which use random hash for security concern
@@ -75,7 +75,9 @@ class AgendaApi(object):
             agenda_description=escape(agenda_description),
         )
         try:
-            response = requests.request("mkcol", agenda_url, data=body.encode("utf-8"))
+            response = requests.request(
+                "mkcol", agenda_url, data=body.encode("utf-8"), auth=(auth, "password")
+            )
         except requests.exceptions.ConnectionError as exc:
             raise AgendaServerConnectionError() from exc
         if not response.status_code == 201:
@@ -86,11 +88,11 @@ class AgendaApi(object):
             )
         logger.info(self, "new caldav agenda created at url {}".format(agenda_url))
 
-    def _update_agenda_props(self, agenda_url, agenda_name, agenda_description):
+    def _update_agenda_props(self, auth, agenda_url, agenda_name, agenda_description):
         logger.debug(self, "update existing caldav agenda props at url {}".format(agenda_url))
         # force renaming of agenda to be sure of consistency
         try:
-            caldav_client = caldav.DAVClient(username="tracim", password="tracim", url=agenda_url)
+            caldav_client = caldav.DAVClient(username=auth, password="password", url=agenda_url)
             agenda = caldav.objects.Calendar(client=caldav_client, url=agenda_url)
             props = agenda.get_properties([caldav.dav.DisplayName(), CalendarDescription()])
             # TODO - G.M - 2019-04-11 - Rewrote this better, we need to verify
@@ -138,6 +140,7 @@ class AgendaApi(object):
         workspace_agenda_url = self.get_workspace_agenda_url(workspace, use_proxy=False)
         if not self._check_agenda_exist(workspace_agenda_url):
             self._create_agenda(
+                auth="workspace",
                 agenda_url=workspace_agenda_url,
                 agenda_name=workspace.label,
                 agenda_description=workspace.description,
@@ -145,6 +148,7 @@ class AgendaApi(object):
             return False
         else:
             self._update_agenda_props(
+                auth="workspace",
                 agenda_url=workspace_agenda_url,
                 agenda_name=workspace.label,
                 agenda_description=workspace.description,
@@ -160,12 +164,18 @@ class AgendaApi(object):
         user_agenda_url = self.get_user_agenda_url(user, use_proxy=False)
         if not self._check_agenda_exist(user_agenda_url):
             self._create_agenda(
-                agenda_url=user_agenda_url, agenda_name=user.display_name, agenda_description=""
+                auth="user",
+                agenda_url=user_agenda_url,
+                agenda_name=user.display_name,
+                agenda_description="",
             )
             return False
         else:
             self._update_agenda_props(
-                agenda_url=user_agenda_url, agenda_name=user.display_name, agenda_description=""
+                auth="user",
+                agenda_url=user_agenda_url,
+                agenda_name=user.display_name,
+                agenda_description="",
             )
             return True
 
